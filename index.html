@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#f2ecdf">
+<title>CiteCard – citation cards for slides</title>
+<meta name="description" content="Paste a DOI or a paper link and get a clean, consistent citation card for your slides, ready to copy and paste.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect x='2.5' y='7.5' width='35' height='25' rx='5' fill='%23fffdf8' stroke='%231b1a18' stroke-width='2.5'/%3E%3Crect x='8' y='13' width='11' height='3.2' rx='1.6' fill='%232c3db5'/%3E%3Crect x='8' y='19' width='24' height='2.4' rx='1.2' fill='%231b1a18'/%3E%3Crect x='8' y='24' width='16' height='2.4' rx='1.2' fill='%236b6558'/%3E%3C/svg%3E">
+<link rel="canonical" href="https://benjaminwehnert1008.github.io/citecard/">
+<meta property="og:title" content="CiteCard">
+<meta property="og:description" content="Paste a DOI, a link or a title and get a clean, consistent citation card for your slides.">
+<meta property="og:url" content="https://benjaminwehnert1008.github.io/citecard/">
+<meta property="og:type" content="website">
+<script>if (!matchMedia('(prefers-reduced-motion: reduce)').matches) document.documentElement.classList.add('motion');</script>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="page">
+  <header class="brand">
+    <svg class="glyph" viewBox="0 0 40 40" aria-hidden="true">
+      <rect x="2.5" y="7.5" width="35" height="25" rx="5" fill="var(--paper)" stroke="var(--ink)" stroke-width="2"/>
+      <rect x="8" y="13" width="11" height="3.2" rx="1.6" fill="var(--stamp)"/>
+      <rect x="8" y="19" width="24" height="2.4" rx="1.2" fill="var(--ink)"/>
+      <rect x="8" y="24" width="16" height="2.4" rx="1.2" fill="var(--ink-soft)"/>
+    </svg>
+    <span class="name">CiteCard</span>
+  </header>
+
+  <main>
+    <section class="hero">
+      <h1>
+        <span class="sr">Paste a DOI, a link or a title. Get a citation card.</span>
+        <span class="typed" aria-hidden="true"><span id="lead">Paste a </span><span id="kind">DOI.</span><br><span id="second">Get a citation card.</span></span>
+      </h1>
+      <p class="lede">Screenshots of paper headers look different for every journal and are hard to read on a slide.
+        CiteCard gives every paper the same clean card, ready to copy and paste.</p>
+    </section>
+
+    <section aria-label="Create a card">
+      <div class="field">
+        <label class="sr" for="input">DOI, link or title of a paper</label>
+        <textarea id="input" rows="1" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="10.1038/s41586-021-03819-2"></textarea>
+        <button class="go" id="go" type="button">Create card <kbd aria-hidden="true">↵</kbd></button>
+      </div>
+      <div class="under">
+        <p class="hint">Works with a <b>DOI</b>, a <b>link</b> to the paper, or just its <b>title</b>. Several papers? One per line.
+          <button class="link" id="again" type="button" hidden>Show the examples</button></p>
+        <button class="toggle" id="customize" type="button" aria-expanded="false" aria-controls="drawer">Customize</button>
+      </div>
+
+      <div class="drawer" id="drawer" hidden>
+        <div class="opt">
+          <p class="k" id="l-width">Width</p>
+          <div class="seg" role="radiogroup" aria-labelledby="l-width">
+            <label><input type="radio" name="o-width" id="o-width-s" data-opt="width" value="440"><span>Small</span></label>
+            <label><input type="radio" name="o-width" id="o-width-m" data-opt="width" value="540"><span>Medium</span></label>
+            <label><input type="radio" name="o-width" id="o-width-l" data-opt="width" value="660"><span>Large</span></label>
+          </div>
+        </div>
+        <div class="opt">
+          <p class="k" id="l-auth">Authors</p>
+          <div class="seg" role="radiogroup" aria-labelledby="l-auth">
+            <label><input type="radio" name="o-auth" id="o-auth-1" data-opt="nAuth" value="1"><span>First + last</span></label>
+            <label><input type="radio" name="o-auth" id="o-auth-3" data-opt="nAuth" value="3"><span>First 3 + last</span></label>
+            <label><input type="radio" name="o-auth" id="o-auth-6" data-opt="nAuth" value="6"><span>First 6 + last</span></label>
+            <label><input type="radio" name="o-auth" id="o-auth-all" data-opt="nAuth" value="99"><span>All that fit</span></label>
+          </div>
+        </div>
+        <div class="opt">
+          <p class="k" id="l-face">Title typeface</p>
+          <div class="seg" role="radiogroup" aria-labelledby="l-face">
+            <label><input type="radio" name="o-face" id="o-face-journal" data-opt="face" value="journal"><span>Journal style</span></label>
+            <label><input type="radio" name="o-face" id="o-face-sans" data-opt="face" value="sans"><span>Sans</span></label>
+            <label><input type="radio" name="o-face" id="o-face-serif" data-opt="face" value="serif"><span>Serif</span></label>
+          </div>
+        </div>
+        <div class="opt">
+          <p class="k" id="l-scale">PNG size</p>
+          <div class="seg" role="radiogroup" aria-labelledby="l-scale">
+            <label><input type="radio" name="o-scale" id="o-scale-2" data-opt="scale" value="2"><span>2×</span></label>
+            <label><input type="radio" name="o-scale" id="o-scale-3" data-opt="scale" value="3"><span>3×</span></label>
+            <label><input type="radio" name="o-scale" id="o-scale-4" data-opt="scale" value="4"><span>4×</span></label>
+          </div>
+        </div>
+        <div class="opt">
+          <label class="k" for="o-accent">Fallback accent</label>
+          <input type="color" id="o-accent" data-opt="accent">
+        </div>
+        <div class="checks">
+          <label class="check"><input type="checkbox" id="o-branding" data-opt="branding"><span>Journal logo and colours</span></label>
+          <label class="check"><input type="checkbox" id="o-uniform" data-opt="uniform"><span>Uniform height</span></label>
+          <label class="check"><input type="checkbox" id="o-abbrev" data-opt="abbrev"><span>Abbreviated journal name</span></label>
+          <label class="check"><input type="checkbox" id="o-doi" data-opt="showDoi"><span>DOI</span></label>
+          <label class="check"><input type="checkbox" id="o-peryear" data-opt="perYear"><span>Citations per year</span></label>
+          <label class="check"><input type="checkbox" id="o-top" data-opt="topBadge"><span>Top % badge</span></label>
+          <label class="check"><input type="checkbox" id="o-credit" data-opt="credit"><span>CiteCard credit</span></label>
+        </div>
+      </div>
+    </section>
+
+    <div class="shelf" id="shelf" hidden>
+      <h2 class="k" id="shelfLabel">Examples</h2>
+      <span class="shelfnote" id="shelfNote">They make way for your own cards.</span>
+      <span class="acts">
+        <span class="bulk" id="bulk" hidden>
+          <button class="quiet" id="copyAll" type="button">Copy all</button>
+          <button class="quiet" id="dlAll" type="button">Download all</button>
+        </span>
+        <button class="quiet" id="clear" type="button">Clear</button>
+      </span>
+    </div>
+    <section id="results" aria-label="Cards"></section>
+  </main>
+
+  <footer>
+    <p>Metadata and citation counts come from OpenAlex and Crossref. Counts differ between databases, so every card
+      names its source and month.</p>
+    <p>Journal logos are loaded from Wikimedia Commons. They are trademarks of their publishers and appear only to
+      identify the journal.</p>
+    <p class="by">Created by <a href="https://www.linkedin.com/in/benjamin-wehnert/" target="_blank" rel="noopener">Benjamin Wehnert</a>
+      · <a href="https://github.com/BenjaminWehnert1008/citecard" target="_blank" rel="noopener">Source on GitHub</a></p>
+  </footer>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+<p class="sr" id="live" aria-live="polite"></p>
+
+<script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"
+        integrity="sha384-3TaxGqyHrMuRIWY5Z5WHNIzgNRqGIUJE+mk6tm+g1wkm9Ux2kUyOLfy9AsNWXA6u" crossorigin="anonymous"></script>
+<script src="assets/brands.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
