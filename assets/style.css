@@ -37,12 +37,12 @@ button{font-family:inherit}
   padding-left:max(20px,env(safe-area-inset-left,0px));padding-right:max(20px,env(safe-area-inset-right,0px))}
 
 /* ── name ── */
-.brand{display:flex;align-items:center;gap:10px}
-.glyph{width:34px;height:34px;flex:none}
-.name{font:500 17px/1 var(--display);letter-spacing:-.02em}
+.brand{display:flex;align-items:center;gap:12px}
+.glyph{width:46px;height:46px;flex:none}
+.name{font:500 22px/1 var(--display);letter-spacing:-.03em}
 
 /* ── what it is ── */
-.hero{margin:clamp(40px,9vw,84px) 0 30px}
+.hero{margin:clamp(24px,5vw,46px) 0 30px}
 h1{margin:0 0 20px;font:500 clamp(26px,7vw,46px)/1.1 var(--display);letter-spacing:-.045em}
 .typed{display:block;min-height:2.2em}                      /* two lines, reserved while the headline types */
 .motion .typed{visibility:hidden;animation:reveal 0s 3s forwards}       /* shown by the script, or after 3s without it */

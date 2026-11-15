@@ -586,20 +586,22 @@ function buildCard(d, o, logo){
   /* fine print: DOI and citation count on the left, credit on the right. It is there for whoever looks for it. */
   out.push(`<rect x="${r2(x0)}" y="${r2(y)}" width="${r2(cw)}" height="${r2(Math.max(1, k))}" fill="${C.line}"/>`);
   y += 8.5 * k;
-  const fst = S('sans', 400, 9.5 * k), base = y + fst.size * 0.8, gap = 5 * k;
-  let cites = '';
+  const fst = S('sans', 400, 9.5 * k), bst = S('sans', 700, 9.5 * k), base = y + fst.size * 0.8, gap = 5 * k;
+  let count = '', source = '';                    // "45,883 citations" in bold, "(OpenAlex, Nov 2026)" in regular
   if (d.cites != null){
-    cites = `${Number(d.cites).toLocaleString('en-US')} ${d.cites === 1 ? 'citation' : 'citations'}`;
+    count = `${Number(d.cites).toLocaleString('en-US')} ${d.cites === 1 ? 'citation' : 'citations'}`;
     const py = o.perYear ? citesPerYear(d) : null;
-    if (py != null) cites += `, ≈ ${py.toLocaleString('en-US')} per year`;
+    if (py != null) count += `, ≈ ${py.toLocaleString('en-US')} per year`;
     const when = new Date(d.fetched).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
     const src = [d.citeSource, when].filter(Boolean).join(', ');
-    if (src) cites += ` (${src})`;
+    if (src) source = `(${src})`;
   }
+  const countW = count ? tw(count, bst) : 0, spaceW = tw(' ', fst);
+  const citesW = countW + (source ? spaceW + tw(source, fst) : 0);
   const doi = o.showDoi && d.doi ? 'doi.org/' + d.doi : '';
   const dot = '·', dotW = tw(dot, fst) + 2 * gap;
   const lead = 'Generated with ', name = 'CiteCard', nameW = tw(name, fst), leadW = tw(lead, fst);
-  const need = (doi ? tw(doi, fst) : 0) + (doi && cites ? dotW : 0) + (cites ? tw(cites, fst) : 0);
+  const need = (doi ? tw(doi, fst) : 0) + (doi && count ? dotW : 0) + citesW;
   // the credit gives way first: drop its lead-in, then let the DOI shorten
   const shortCredit = o.credit && need + 16 * k + leadW + nameW > cw;
   let right = xr;
@@ -614,15 +616,20 @@ function buildCard(d, o, logo){
   }
   let fx = x0;
   if (doi){
-    const room = right - x0 - (cites ? dotW + tw(cites, fst) : 0);
+    const room = right - x0 - (count ? dotW + citesW : 0);
     if (room > 60 * k){
       const s = ellipsize(doi, fst, room);
       text(fx, base, s, fst, accentText);
       fx += tw(s, fst);
-      if (cites){ text(fx + gap, base, dot, fst, C.faint); fx += dotW; }
+      if (count){ text(fx + gap, base, dot, fst, C.faint); fx += dotW; }
     }
   }
-  if (cites) text(fx, base, ellipsize(cites, fst, right - fx), fst, C.muted);
+  if (count){
+    const room = right - fx;
+    text(fx, base, ellipsize(count, bst, room), bst, C.muted);
+    const left = room - countW - spaceW;
+    if (source && left > 30 * k) text(fx + countW + spaceW, base, ellipsize(source, fst, left), fst, C.muted);
+  }
   y += fst.size + 10.5 * k;
 
   const H = Math.ceil(y);
