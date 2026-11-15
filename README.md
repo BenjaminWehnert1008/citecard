@@ -85,3 +85,8 @@ License. The font files and [opentype.js](https://opentype.js.org) are loaded fr
 card fonts cannot be loaded, the cards fall back to system fonts.
 
 Cards and settings are kept in the browser (localStorage). There is no backend. The site is light only.
+
+## License
+
+The code is released under the [MIT License](LICENSE). That does not cover what the tool loads at runtime:
+journal logos remain trademarks of their publishers, and the fonts are under the SIL Open Font License.
