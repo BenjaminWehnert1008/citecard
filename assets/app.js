@@ -1032,14 +1032,13 @@ async function opening(){
   await typeInto(kind, words[1], 30);
   await sleep(170);
   await typeInto(second, words[2], 30);
-  await sleep(140);
   kind.after(caret);                            // back to the word that will change
 }
 
 async function tour(){
   const kind = $('#kind'), box = $('#input');
   for (const n of [1, 2, 0]){
-    await sleep(2400);
+    await sleep(1100);
     while (document.hidden) await sleep(400);    // wait for someone to be watching
     if (document.activeElement === box || box.value) break;      // the visitor has started: stop performing
     await eraseFrom(kind, 30);
@@ -1050,8 +1049,9 @@ async function tour(){
   caret.remove();
 }
 
-Promise.all([opening().catch(() => {}), fontsReady]).then(() => {
+const opened = opening().catch(() => {});
+opened.then(() => { if (!calm) tour(); });       // the pauses count from the headline, not from the fonts
+Promise.all([opened, fontsReady]).then(() => {
   document.body.classList.add('ready');
   items.forEach(deal);
-  if (!calm) tour();
 });
