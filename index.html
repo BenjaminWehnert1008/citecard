@@ -6,11 +6,11 @@
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#f2ecdf">
 <title>CiteCard – citation cards for slides</title>
-<meta name="description" content="Paste a DOI or a paper link and get a clean, consistent citation card for your slides, ready to copy and paste.">
+<meta name="description" content="Paste a paper link, a DOI or a title and get a clean, consistent citation card for your slides, ready to copy and paste.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect x='2.5' y='7.5' width='35' height='25' rx='5' fill='%23fffdf8' stroke='%231b1a18' stroke-width='2.5'/%3E%3Crect x='8' y='13' width='11' height='3.2' rx='1.6' fill='%232c3db5'/%3E%3Crect x='8' y='19' width='24' height='2.4' rx='1.2' fill='%231b1a18'/%3E%3Crect x='8' y='24' width='16' height='2.4' rx='1.2' fill='%236b6558'/%3E%3C/svg%3E">
 <link rel="canonical" href="https://benjaminwehnert1008.github.io/citecard/">
 <meta property="og:title" content="CiteCard">
-<meta property="og:description" content="Paste a DOI, a link or a title and get a clean, consistent citation card for your slides.">
+<meta property="og:description" content="Paste a link, a DOI or a title and get a clean, consistent citation card for your slides.">
 <meta property="og:url" content="https://benjaminwehnert1008.github.io/citecard/">
 <meta property="og:type" content="website">
 <script>if (!matchMedia('(prefers-reduced-motion: reduce)').matches) document.documentElement.classList.add('motion');</script>
@@ -32,8 +32,8 @@
   <main>
     <section class="hero">
       <h1>
-        <span class="sr">Paste a DOI, a link or a title. Get a citation card.</span>
-        <span class="typed" aria-hidden="true"><span id="lead">Paste a </span><span id="kind">DOI.</span><br><span id="second">Get a citation card.</span></span>
+        <span class="sr">Paste a link, a DOI or a title. Get a citation card.</span>
+        <span class="typed" aria-hidden="true"><span id="lead">Paste a </span><span id="kind">link.</span><br><span id="second">Get a citation card.</span></span>
       </h1>
       <p class="lede">Screenshots of paper headers look different for every journal and are hard to read on a slide.
         CiteCard gives every paper the same clean card, ready to copy and paste.</p>
@@ -41,13 +41,13 @@
 
     <section aria-label="Create a card">
       <div class="field">
-        <label class="sr" for="input">DOI, link or title of a paper</label>
-        <textarea id="input" rows="1" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="10.1038/s41586-021-03819-2"></textarea>
+        <label class="sr" for="input">Link, DOI or title of a paper</label>
+        <textarea id="input" rows="1" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="https://www.nature.com/articles/s41586-021-03819-2"></textarea>
         <button class="go" id="go" type="button">Create card <kbd aria-hidden="true">↵</kbd></button>
       </div>
       <div class="under">
-        <p class="hint">Works with a <b>DOI</b>, a <b>link</b> to the paper, or just its <b>title</b>. Several papers? One per line.
-          <button class="link" id="again" type="button" hidden>Show the examples</button></p>
+        <p class="hint">Works with a <b>link</b> to the paper, a <b>DOI</b>, or just its <b>title</b>. Several papers? One per line.
+          <button class="link" id="again" type="button" hidden>Show the example</button></p>
         <button class="toggle" id="customize" type="button" aria-expanded="false" aria-controls="drawer">Customize</button>
       </div>
 
@@ -102,8 +102,8 @@
     </section>
 
     <div class="shelf" id="shelf" hidden>
-      <h2 class="k" id="shelfLabel">Examples</h2>
-      <span class="shelfnote" id="shelfNote">They make way for your own cards.</span>
+      <h2 class="k" id="shelfLabel">Example</h2>
+      <span class="shelfnote" id="shelfNote">It makes way for your own cards.</span>
       <span class="acts">
         <span class="bulk" id="bulk" hidden>
           <button class="quiet" id="copyAll" type="button">Copy all</button>

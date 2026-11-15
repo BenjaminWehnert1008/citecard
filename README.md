@@ -34,7 +34,7 @@ One paper per line:
 Links without a recognisable identifier (Oxford Academic, MDPI, …) produce a message asking for the DOI
 or the title.
 
-A first visit shows three example cards. They disappear as soon as you create your own.
+A first visit shows one example card, the AlphaFold paper. It disappears as soon as you create your own.
 
 ## Output
 

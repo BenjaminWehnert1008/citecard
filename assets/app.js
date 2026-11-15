@@ -164,7 +164,7 @@ function fromOpenAlex(w){
   const pct = w.citation_normalized_percentile || {};
   const doi = (w.doi || '').replace(/^https?:\/\/(dx\.)?doi\.org\//i, '');
   return {
-    key: (doi || w.id || '').toLowerCase(), doi,
+    key: (doi || w.id || '').toLowerCase(), doi, oa: (w.id || '').split('/').pop(),
     title: tidyTitle(title),
     authors: (w.authorships || []).map(oaAuthor).filter(a => a.family),
     journal, journalShort: '',
@@ -216,6 +216,16 @@ async function enrich(d){
   } catch {}
 }
 
+// OpenAlex's search index runs about a day ahead of its single-work endpoint, so the two can disagree on the
+// citation count. Every card takes its numbers from the single work, whichever way the paper was found.
+async function canonical(rec){
+  if (!rec.oa) return rec;
+  try {
+    const w = await openalex(`${OA}/${rec.oa}`);
+    return w ? fromOpenAlex(w) : rec;
+  } catch { return rec; }
+}
+
 async function resolve(raw){
   let p = parseInput(raw);
 
@@ -223,8 +233,9 @@ async function resolve(raw){
     const j = await openalex(`${OA}?search=${encodeURIComponent(p.q)}&per-page=5`);
     const recs = (j?.results || []).map(fromOpenAlex);
     if (!recs.length) throw new UserError('No paper found with this title.');
-    await enrich(recs[0]);
-    return { data: recs[0], alts: recs.slice(1) };
+    const first = await canonical(recs[0]);
+    await enrich(first);
+    return { data: first, alts: recs.slice(1) };
   }
   if (p.kind === 'pii'){
     const j = await crossref(`${CR}?filter=alternative-id:${p.id}&rows=1`);
@@ -725,7 +736,7 @@ const results = $('#results');
 const calm = !document.documentElement.classList.contains('motion');     // the visitor prefers reduced motion
 const items = [];            // in the order shown: { raw, el, data, alts, logo, card, url, example }
 let typeReady = false;       // cards are drawn once the fonts have loaded (or failed)
-const EXAMPLES = ['10.1038/s41586-021-03819-2', '10.1073/pnas.1611835114', 'https://arxiv.org/abs/1706.03762'];
+const EXAMPLES = ['10.1038/s41586-021-03819-2'];     // the AlphaFold paper: the one the headline's samples point to
 
 function save(){
   LS.set('citecard.v2.items', items.filter(i => i.data && !i.example).map(i => ({ raw: i.raw, data: i.data, alts: i.alts })));
@@ -735,7 +746,8 @@ function syncShelf(){
   const done = items.filter(i => i.data).length, examples = items.length > 0 && items.every(i => i.example);
   $('#shelf').hidden = items.length === 0;
   $('#again').hidden = items.length > 0;
-  $('#shelfLabel').textContent = examples ? 'Examples' : done === 1 ? '1 card' : `${done} cards`;
+  $('#shelfLabel').textContent = examples ? (items.length === 1 ? 'Example' : 'Examples') : done === 1 ? '1 card' : `${done} cards`;
+  $('#shelfNote').textContent = items.length === 1 ? 'It makes way for your own cards.' : 'They make way for your own cards.';
   $('#shelfNote').hidden = !examples;
   $('#bulk').hidden = done < 2;
 }
@@ -830,9 +842,10 @@ function mount(item){
       b.type = 'button'; b.className = 'link';
       b.textContent = `${a.title} (${[a.journal, a.year].filter(Boolean).join(' ')})`;
       b.onclick = async () => {
+        const picked = await canonical(a);
         item.alts = item.alts.filter(x => x !== a).concat(item.data);
-        item.data = a;
-        await enrich(a);
+        item.data = picked;
+        await enrich(picked);
         mount(item); save();
       };
       box.append(b);
@@ -983,13 +996,13 @@ syncShelf();
 fontsReady.then(() => { typeReady = true; items.forEach(refresh); });
 
 /* ════════════════════════ the opening ════════════════════════
-   The headline types itself, then the cards are dealt. While only the examples are on the page, the headline
-   keeps retyping its last word (DOI, link, title) and the input shows a matching sample, so it is plain that
-   any of the three works. Once the visitor has cards of their own, it settles and keeps still. */
-const KINDS = [
+   The headline types itself, then the cards are dealt. After that its last word is retyped once through the
+   three things you can paste (link, DOI, title) while the input shows the matching sample of the example
+   paper. It ends back on "link", the caret goes, and the page keeps still. */
+const KINDS = [                                    // three ways to name the same paper, the example card below
+  { word: 'link.', sample: 'https://www.nature.com/articles/s41586-021-03819-2' },
   { word: 'DOI.', sample: '10.1038/s41586-021-03819-2' },
-  { word: 'link.', sample: 'https://arxiv.org/abs/1706.03762' },
-  { word: 'title.', sample: 'Attention is all you need' },
+  { word: 'title.', sample: 'Highly accurate protein structure prediction with AlphaFold' },
 ];
 const caret = document.createElement('i');
 caret.className = 'caret';
@@ -1023,26 +1036,22 @@ async function opening(){
   kind.after(caret);                            // back to the word that will change
 }
 
-async function retype(){
+async function tour(){
   const kind = $('#kind'), box = $('#input');
-  let shown = 0;
-  const show = async n => {
-    shown = n;
+  for (const n of [1, 2, 0]){
+    await sleep(2400);
+    while (document.hidden) await sleep(400);    // wait for someone to be watching
+    if (document.activeElement === box || box.value) break;      // the visitor has started: stop performing
     await eraseFrom(kind, 30);
     await typeInto(kind, KINDS[n].word, 45);
     await typeSample(KINDS[n].sample);
-  };
-  for (;;){
-    await sleep(2800);
-    if (document.hidden || document.activeElement === box || box.value) continue;      // never while someone is typing
-    const browsing = items.length > 0 && items.every(it => it.example);
-    if (browsing) await show((shown + 1) % KINDS.length);
-    else if (shown) await show(0);
   }
+  if (kind.textContent !== KINDS[0].word){ kind.textContent = KINDS[0].word; box.placeholder = KINDS[0].sample; }
+  caret.remove();
 }
 
 Promise.all([opening().catch(() => {}), fontsReady]).then(() => {
   document.body.classList.add('ready');
   items.forEach(deal);
-  if (!calm) retype();
+  if (!calm) tour();
 });
