@@ -716,7 +716,9 @@ function buildCard(d, o, logo){
     const room = right - x0 - (count ? dotW + citesW : 0);
     if (room > 60 * k){
       const s = ellipsize(doi, fst, room);
+      out.push(`<a xlink:href="${esc('https://doi.org/' + encodeURIComponent(d.doi).replace(/%2F/gi, '/'))}" target="_blank">`);
       text(fx, base, s, fst, accentText);
+      out.push('</a>');
       fx += tw(s, fst);
       if (count){ text(fx + gap, base, dot, fst, C.faint); fx += dotW; }
     }
@@ -793,6 +795,223 @@ async function allPng(){
   let y = 0;
   for (const x of cs){ ctx.drawImage(x, 0, y); y += x.height + gap; }
   return canvasToPng(c, scale);
+}
+
+/* PDF, written by hand: the card's own vector drawing, read back from its SVG. Text stays outlines, and the DOI
+   and the CiteCard credit become clickable links, which a PNG cannot hold. 1 px is 0.75 pt, so the PDF has the
+   same physical size as the PNG. A card drawn with system fonts goes in as an image, links still on top. */
+const PT = 0.75;
+function num(v){
+  if (!Number.isFinite(v)) throw new Error('Bad number in the card drawing');
+  const s = v.toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+  return s === '-0' ? '0' : s;
+}
+function pdfColor(c){
+  mctx.fillStyle = '#000'; mctx.fillStyle = c;                 // the browser normalises any CSS colour
+  const v = mctx.fillStyle, [r, g, b] = v[0] === '#' ? rgb(v) : v.match(/[\d.]+/g).map(Number);
+  return [r, g, b].map(x => num(x / 255)).join(' ');
+}
+const newBox = () => ({ x1: Infinity, y1: Infinity, x2: -Infinity, y2: -Infinity,
+  add(x, y){ this.x1 = Math.min(this.x1, x); this.y1 = Math.min(this.y1, y); this.x2 = Math.max(this.x2, x); this.y2 = Math.max(this.y2, y); } });
+
+// SVG elliptical arc → cubic Béziers of at most 90° each (SVG spec, appendix F.6).
+function arcToCubics(x1, y1, rx, ry, rot, large, sweep, x2, y2){
+  if (!rx || !ry) return [[x1, y1, x2, y2, x2, y2]];
+  const phi = rot * Math.PI / 180, cos = Math.cos(phi), sin = Math.sin(phi);
+  const dx = (x1 - x2) / 2, dy = (y1 - y2) / 2, xp = cos * dx + sin * dy, yp = -sin * dx + cos * dy;
+  rx = Math.abs(rx); ry = Math.abs(ry);
+  const lam = xp * xp / (rx * rx) + yp * yp / (ry * ry);
+  if (lam > 1){ rx *= Math.sqrt(lam); ry *= Math.sqrt(lam); }
+  const den = rx * rx * yp * yp + ry * ry * xp * xp;
+  let co = Math.sqrt(Math.max(0, (rx * rx * ry * ry - den) / den));
+  if (!!large === !!sweep) co = -co;
+  const cxp = co * rx * yp / ry, cyp = -co * ry * xp / rx;
+  const cx = cos * cxp - sin * cyp + (x1 + x2) / 2, cy = sin * cxp + cos * cyp + (y1 + y2) / 2;
+  const ang = (ux, uy, vx, vy) => Math.atan2(ux * vy - uy * vx, ux * vx + uy * vy);
+  const t1 = ang(1, 0, (xp - cxp) / rx, (yp - cyp) / ry);
+  let dt = ang((xp - cxp) / rx, (yp - cyp) / ry, (-xp - cxp) / rx, (-yp - cyp) / ry);
+  if (!sweep && dt > 0) dt -= 2 * Math.PI; else if (sweep && dt < 0) dt += 2 * Math.PI;
+  const n = Math.max(1, Math.ceil(Math.abs(dt) / (Math.PI / 2) - 1e-9)), step = dt / n, k = 4 / 3 * Math.tan(step / 4);
+  const at = (ux, uy) => [cx + rx * ux * cos - ry * uy * sin, cy + rx * ux * sin + ry * uy * cos];
+  const out = [];
+  for (let i = 0, t = t1; i < n; i++, t += step){
+    const c1 = Math.cos(t), s1 = Math.sin(t), c2 = Math.cos(t + step), s2 = Math.sin(t + step);
+    out.push([...at(c1 - k * s1, s1 + k * c1), ...at(c2 + k * s2, s2 - k * c2), ...at(c2, s2)]);
+  }
+  return out;
+}
+
+// Absolute path data, as written by buildCard and opentype.js (M L H V C Q A Z), in PDF path operators.
+function pathOps(d, box){
+  const t = d.match(/[a-zA-Z]|-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?/g) || [], ops = [];
+  let i = 0, cmd = '', x = 0, y = 0, sx = 0, sy = 0;
+  const n = () => { const v = parseFloat(t[i++]); if (!Number.isFinite(v)) throw new Error('Bad path'); return v; };
+  const p = (...xy) => xy.map((v, j) => { if (j % 2) box?.add(xy[j - 1], v); return num(v); }).join(' ');
+  while (i < t.length){
+    if (/[a-zA-Z]/.test(t[i])) cmd = t[i++];
+    switch (cmd){
+      case 'M': x = sx = n(); y = sy = n(); ops.push(p(x, y) + ' m'); cmd = 'L'; break;
+      case 'L': x = n(); y = n(); ops.push(p(x, y) + ' l'); break;
+      case 'H': x = n(); ops.push(p(x, y) + ' l'); break;
+      case 'V': y = n(); ops.push(p(x, y) + ' l'); break;
+      case 'C': { const c = [n(), n(), n(), n(), n(), n()]; ops.push(p(...c) + ' c'); [x, y] = c.slice(4); break; }
+      case 'Q': {
+        const qx = n(), qy = n(), ex = n(), ey = n();
+        ops.push(p(x + 2 / 3 * (qx - x), y + 2 / 3 * (qy - y), ex + 2 / 3 * (qx - ex), ey + 2 / 3 * (qy - ey), ex, ey) + ' c');
+        x = ex; y = ey; break;
+      }
+      case 'A': {
+        const [rx, ry, rot, large, sweep, ex, ey] = [n(), n(), n(), n(), n(), n(), n()];
+        for (const c of arcToCubics(x, y, rx, ry, rot, large, sweep, ex, ey)) ops.push(p(...c) + ' c');
+        x = ex; y = ey; break;
+      }
+      case 'Z': case 'z': ops.push('h'); x = sx; y = sy; cmd = ''; break;
+      default: throw new Error(`Path command ${cmd || t[i]} is not supported`);
+    }
+  }
+  return ops.join('\n');
+}
+
+function rectOps(x, y, w, h, r, box){
+  box?.add(x, y); box?.add(x + w, y + h);
+  if (!(r > 0)) return `${num(x)} ${num(y)} ${num(w)} ${num(h)} re`;
+  r = Math.min(r, w / 2, h / 2);
+  const c = r * 0.4477, p = (...a) => a.map(num).join(' ');                // 1 − 0.5523: a quarter circle
+  return [`${p(x + r, y)} m`, `${p(x + w - r, y)} l`, `${p(x + w - c, y, x + w, y + c, x + w, y + r)} c`,
+          `${p(x + w, y + h - r)} l`, `${p(x + w, y + h - c, x + w - c, y + h, x + w - r, y + h)} c`,
+          `${p(x + r, y + h)} l`, `${p(x + c, y + h, x, y + h - c, x, y + h - r)} c`,
+          `${p(x, y + r)} l`, `${p(x, y + c, x + c, y, x + r, y)} c`, 'h'].join('\n');
+}
+
+// The card's SVG (without the logo) as PDF drawing operators in card pixels, plus its links and title.
+function readCard(card){
+  const doc = new DOMParser().parseFromString(card.base, 'image/svg+xml'), root = doc.documentElement;
+  if (root.localName !== 'svg') throw new Error('The card could not be read');
+  const ops = [], links = [];
+  let system = false;
+  const walk = (el, box) => {
+    for (const n of el.children){
+      const at = a => n.getAttribute(a), tag = n.localName;
+      if (tag === 'a'){
+        const b = newBox(), href = at('xlink:href') || at('href');
+        walk(n, b);
+        if (href && b.x2 > b.x1) links.push({ href, x1: b.x1, y1: b.y1, x2: b.x2, y2: b.y2 });
+        continue;
+      }
+      if (tag === 'text'){                       // system fonts: the card goes in as an image
+        system = true;
+        if (box){
+          const x = +at('x'), y = +at('y'), size = +at('font-size');
+          mctx.font = `${at('font-weight')} ${size}px ${at('font-family')}`;
+          box.add(x, y - size * 0.8); box.add(x + mctx.measureText(n.textContent).width, y + size * 0.25);
+        }
+        continue;
+      }
+      let shape;
+      if (tag === 'rect') shape = rectOps(+at('x') || 0, +at('y') || 0, +at('width'), +at('height'), +at('rx') || 0, box);
+      else if (tag === 'path') shape = pathOps(at('d') || '', box);
+      else continue;
+      const fill = at('fill') ?? '#000', stroke = at('stroke'), f = fill !== 'none', s = !!stroke && stroke !== 'none';
+      if (!f && !s) continue;
+      ops.push((f ? `${pdfColor(fill)} rg\n` : '') + (s ? `${pdfColor(stroke)} RG ${num(+(at('stroke-width') ?? 1))} w\n` : '') +
+               shape + (f && s ? '\nB' : f ? '\nf' : '\nS'));
+    }
+  };
+  walk(root, null);
+  return { ops: ops.join('\n'), links, system, title: root.querySelector('title')?.textContent || '' };
+}
+
+// Pixels as PDF image data. Without alpha the image is laid on the card's white.
+function imageData(canvas, alpha){
+  const w = canvas.width, h = canvas.height, px = canvas.getContext('2d').getImageData(0, 0, w, h).data;
+  const rgb = new Uint8Array(w * h * 3), mask = alpha ? new Uint8Array(w * h) : null;
+  for (let p = 0, i = 0, j = 0; p < w * h; p++, i += 4, j += 3){
+    const a = px[i + 3] / 255;
+    for (let c = 0; c < 3; c++) rgb[j + c] = alpha ? (a ? px[i + c] : 255) : Math.round(px[i + c] * a + 255 * (1 - a));
+    if (mask) mask[p] = px[i + 3];
+  }
+  return { w, h, rgb, mask };
+}
+
+async function deflate(bytes){
+  if (!window.CompressionStream) return null;
+  try { return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate'))).arrayBuffer()); }
+  catch { return null; }
+}
+const pdfString = s => '(' + s.replace(/[^\x20-\x7e]/g, c => encodeURIComponent(c)).replace(/[\\()]/g, '\\$&') + ')';
+const pdfText = s => '<FEFF' + Array.from({ length: s.length }, (_, i) => s.charCodeAt(i).toString(16).padStart(4, '0')).join('') + '>';
+
+async function writePdf(w, h, content, images, links, title){
+  const enc = new TextEncoder(), objs = [];
+  const reserve = () => objs.push(null);
+  const put = (n, dict, data) => { objs[n - 1] = { dict, data }; return n; };
+  const add = (dict, data) => put(reserve(), dict, data);
+  const stream = async (dict, bytes) => {
+    const z = await deflate(bytes);
+    return add(`<< ${dict}${z ? ' /Filter /FlateDecode' : ''} /Length ${(z || bytes).length} >>`, z || bytes);
+  };
+  const pages = reserve(), page = reserve();
+  const contents = await stream('', enc.encode(content));
+  const xobjects = [];
+  for (const [i, im] of images.entries()){
+    const { w: iw, h: ih, rgb: px, mask } = imageData(im.canvas, im.alpha);
+    const head = `/Type /XObject /Subtype /Image /Width ${iw} /Height ${ih} /BitsPerComponent 8 /Interpolate true`;
+    const smask = mask ? await stream(`${head} /ColorSpace /DeviceGray`, mask) : 0;
+    xobjects.push(`/Im${i + 1} ${await stream(`${head} /ColorSpace /DeviceRGB${smask ? ` /SMask ${smask} 0 R` : ''}`, px)} 0 R`);
+  }
+  const annots = links.map(l => add(`<< /Type /Annot /Subtype /Link /Rect [${l.rect.map(num).join(' ')}] /Border [0 0 0] ` +
+                                    `/A << /Type /Action /S /URI /URI ${pdfString(l.href)} >> >>`));
+  put(page, `<< /Type /Page /Parent ${pages} 0 R /MediaBox [0 0 ${num(w)} ${num(h)}] /Resources << /XObject << ${xobjects.join(' ')} >> >> ` +
+            `/Contents ${contents} 0 R${annots.length ? ` /Annots [${annots.map(n => `${n} 0 R`).join(' ')}]` : ''} >>`);
+  put(pages, `<< /Type /Pages /Kids [${page} 0 R] /Count 1 >>`);
+  const root = add(`<< /Type /Catalog /Pages ${pages} 0 R >>`);
+  const when = new Date().toISOString().replace(/\D/g, '').slice(0, 14);
+  const info = add(`<< /Title ${pdfText(title)} /Creator ${pdfString('CiteCard ' + SITE_URL)} /Producer (CiteCard) /CreationDate (D:${when}Z) >>`);
+
+  const chunks = [new Uint8Array([37, 80, 68, 70, 45, 49, 46, 52, 10, 37, 226, 227, 207, 211, 10])];    // %PDF-1.4, binary marker
+  let size = chunks[0].length;
+  const out = x => { const b = typeof x === 'string' ? enc.encode(x) : x; chunks.push(b); size += b.length; };
+  const offsets = objs.map((o, i) => {
+    const at = size;
+    out(`${i + 1} 0 obj\n${o.dict}\n`);
+    if (o.data){ out('stream\n'); out(o.data); out('\nendstream\n'); }
+    out('endobj\n');
+    return at;
+  });
+  const xref = size;
+  out(`xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + offsets.map(o => `${String(o).padStart(10, '0')} 00000 n \n`).join('') +
+      `trailer\n<< /Size ${objs.length + 1} /Root ${root} 0 R /Info ${info} 0 R >>\nstartxref\n${xref}\n%%EOF\n`);
+  return new Blob(chunks, { type: 'application/pdf' });
+}
+
+// One page; several cards are stacked like the combined PNG.
+async function cardsPdf(cards){
+  const gap = 10, W = Math.max(...cards.map(c => c.W)), H = cards.reduce((a, c) => a + c.H, 0) + gap * (cards.length - 1);
+  const body = [`${num(PT)} 0 0 ${num(-PT)} 0 ${num(H * PT)} cm`], images = [], links = [];
+  const place = (canvas, alpha, x, y, w, h) => {
+    images.push({ canvas, alpha });
+    return `q ${num(w)} 0 0 ${num(-h)} ${num(x)} ${num(y + h)} cm /Im${images.length} Do Q`;
+  };
+  let top = 0, title = '';
+  for (const card of cards){
+    const r = readCard(card);
+    title = title || r.title;
+    body.push('q', `1 0 0 1 0 ${num(top)} cm`);
+    if (r.system) body.push(place(await toCanvas(card, opts.scale), true, 0, 0, card.W, card.H));
+    else {
+      body.push(r.ops);
+      const b = card.logoBox;
+      if (b) body.push(place(b.canvas, false, b.x, b.y, b.w, b.h));
+    }
+    body.push('Q');
+    const pad = 2;
+    for (const l of r.links) links.push({ href: l.href, rect: [(l.x1 - pad) * PT, (H - top - l.y2 - pad) * PT, (l.x2 + pad) * PT, (H - top - l.y1 + pad) * PT] });
+    top += card.H + gap;
+  }
+  return writePdf(W * PT, H * PT, body.join('\n'), images, links, cards.length > 1 ? `${cards.length} citation cards` : title);
+}
+function savePdf(cards, name){
+  cardsPdf(cards).then(b => download(b, name), e => { console.error(e); toast('The PDF could not be created.', true); });
 }
 
 function toast(msg, bad){
@@ -915,6 +1134,7 @@ function mount(item){
       <button class="solid" type="button" data-act="copy">Copy</button>
       <button type="button" data-act="png">PNG</button>
       <button type="button" data-act="svg">SVG</button>
+      <button type="button" data-act="pdf">PDF</button>
       <button type="button" data-act="edit" aria-expanded="false">Edit</button>
       <span class="spacer"></span>
       <button class="quiet" type="button" data-act="remove">Remove</button>
@@ -964,6 +1184,7 @@ function mount(item){
     if (act === 'copy') copyPng(cardPng(item.card), () => stamp(item));
     if (act === 'png') cardPng(item.card).then(b => download(b, fileName(item.data) + '.png'));
     if (act === 'svg') download(new Blob([item.card.svg], { type: 'image/svg+xml' }), fileName(item.data) + '.svg');
+    if (act === 'pdf') savePdf([item.card], fileName(item.data) + '.pdf');
     if (act === 'autocolor'){ item.data.color = ''; refresh(item); form.elements.col.value = item.card.accent; keep(item); }
     if (act === 'edit'){
       form.hidden = !form.hidden;
@@ -1077,6 +1298,7 @@ $('#copyAll').onclick = () => {
   copyPng(allPng(), () => toast(`Copied ${n} cards as one image.`));
 };
 $('#dlAll').onclick = () => allPng().then(b => download(b, 'citations.png'));
+$('#pdfAll').onclick = () => savePdf(items.filter(i => i.card).map(i => i.card), 'citations.pdf');
 $('#customize').onclick = e => {
   const drawer = $('#drawer');
   drawer.hidden = !drawer.hidden;

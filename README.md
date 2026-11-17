@@ -16,8 +16,8 @@ python3 -m http.server 8765 --bind 127.0.0.1
 ```
 
 The project is a plain static site (`index.html` plus `assets/`), so it can be published on GitHub Pages
-as it is. After publishing, set `SITE_URL` at the top of `assets/app.js`: in SVG exports the "CiteCard"
-credit then links to the site.
+as it is. After publishing, set `SITE_URL` at the top of `assets/app.js`: in SVG and PDF exports the
+"CiteCard" credit then links to the site.
 
 ## Input
 
@@ -42,7 +42,10 @@ A first visit shows one example card, the AlphaFold paper. It disappears as soon
 - **PNG** saves it at 4×, 6× or 8× resolution (8× by default: a medium card is 4,320 px wide). The pixel density is written into the file so PowerPoint inserts
   it at the intended size.
 - **SVG** saves it as a vector graphic. Text is stored as outlines, so it needs no installed fonts.
-- **Copy all / Download all** stacks every card into one image.
+- **PDF** saves the same vector drawing as a one-page PDF, at the size of the PNG. The DOI and the
+  "CiteCard" credit are clickable links in it, which a PNG cannot hold. A picture inserted into slides
+  usually loses its links; they work when the PDF itself is opened or shared.
+- **Copy all / All as PNG / All as PDF** stack every card into one image or one page.
 
 **Edit** on a card corrects the title, authors, journal, year, citation count and its source, switches the
 logo off, or overrides the accent colour.
