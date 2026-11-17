@@ -41,7 +41,7 @@ function rgb2hsl(r, g, b){
 }
 /* ════════════════════════ options ════════════════════════ */
 const DEFAULTS = { width: 540, face: 'journal', nAuth: 99, scale: 8, accent: '#27303d',
-                   branding: true, uniform: false, abbrev: false, perYear: false, showDoi: true, credit: true };
+                   branding: true, uniform: false, abbrev: false, showDoi: true };
 const opts = { ...DEFAULTS, ...LS.get('citecard.v2.opts', {}) };
 if (![4, 6, 8].includes(opts.scale)) opts.scale = DEFAULTS.scale;      // settings saved before the 4x-8x choice
 
@@ -615,14 +615,6 @@ function authorLines(d, o, st, maxW, maxLines){
   return wrap(compose(1, 1), st, maxW, maxLines);
 }
 
-function citesPerYear(d){
-  if (d.cites == null) return null;
-  const pub = d.date ? new Date(d.date) : d.year ? new Date(Number(d.year), 6, 1) : null;
-  if (!pub || isNaN(pub)) return null;
-  const years = (d.fetched - pub) / 31557600000;
-  return years >= 1 ? Math.round(d.cites / years) : null;
-}
-
 function buildCard(d, o, logo){
   const W = o.width, k = W / 540;
   const C = { bg: '#ffffff', fg: '#12141a', muted: '#566070', faint: '#8d949f', line: '#e7e9ee', border: '#dcdfe5', pill: '#eff1f4' };
@@ -694,15 +686,14 @@ function buildCard(d, o, logo){
   al.forEach((s, i) => text(x0, y + ast.size * 0.88 + i * lhA, s, ast, C.muted));
   y += (o.uniform ? maxA : al.length) * lhA + 9 * k;
 
-  /* fine print: DOI and citation count on the left, credit on the right. It is there for whoever looks for it. */
+  /* fine print: DOI and citation count on the left, the "Generated with CiteCard" credit on the right, always.
+     It is there for whoever looks for it. When space runs short, the DOI shortens. */
   out.push(`<rect x="${r2(x0)}" y="${r2(y)}" width="${r2(cw)}" height="${r2(Math.max(1, k))}" fill="${C.line}"/>`);
   y += 8.5 * k;
   const fst = S('sans', 400, 9.5 * k), bst = S('sans', 700, 9.5 * k), base = y + fst.size * 0.8, gap = 5 * k;
   let count = '', source = '';                    // "45,883 citations" in bold, "(OpenAlex, Nov 2026)" in regular
   if (d.cites != null){
     count = `${Number(d.cites).toLocaleString('en-US')} ${d.cites === 1 ? 'citation' : 'citations'}`;
-    const py = o.perYear ? citesPerYear(d) : null;
-    if (py != null) count += `, ≈ ${py.toLocaleString('en-US')} per year`;
     const when = new Date(d.fetched).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
     const src = [d.citeSource, when].filter(Boolean).join(', ');
     if (src) source = `(${src})`;
@@ -712,19 +703,14 @@ function buildCard(d, o, logo){
   const doi = o.showDoi && d.doi ? 'doi.org/' + d.doi : '';
   const dot = '·', dotW = tw(dot, fst) + 2 * gap;
   const lead = 'Generated with ', name = 'CiteCard', nameW = tw(name, fst), leadW = tw(lead, fst);
-  const need = (doi ? tw(doi, fst) : 0) + (doi && count ? dotW : 0) + citesW;
-  // the credit gives way first: drop its lead-in, then let the DOI shorten
-  const shortCredit = o.credit && need + 16 * k + leadW + nameW > cw;
-  let right = xr;
-  if (o.credit){
-    right -= nameW;
-    if (SITE_URL) out.push(`<a xlink:href="${esc(SITE_URL)}" target="_blank">`);
-    text(right, base, name, fst, C.faint);
-    out.push(`<rect x="${r2(right)}" y="${r2(base + 1.6 * k)}" width="${r2(nameW)}" height="${r2(0.55 * k)}" fill="${C.faint}"/>`);
-    if (SITE_URL) out.push('</a>');
-    if (!shortCredit){ right -= leadW; text(right, base, lead, fst, C.faint); }
-    right -= 16 * k;
-  }
+  let right = xr - nameW;
+  if (SITE_URL) out.push(`<a xlink:href="${esc(SITE_URL)}" target="_blank">`);
+  text(right, base, name, fst, C.faint);
+  out.push(`<rect x="${r2(right)}" y="${r2(base + 1.6 * k)}" width="${r2(nameW)}" height="${r2(0.55 * k)}" fill="${C.faint}"/>`);
+  if (SITE_URL) out.push('</a>');
+  right -= leadW;
+  text(right, base, lead, fst, C.faint);
+  right -= 16 * k;
   let fx = x0;
   if (doi){
     const room = right - x0 - (count ? dotW + citesW : 0);

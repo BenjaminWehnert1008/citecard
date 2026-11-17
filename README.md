@@ -48,7 +48,7 @@ A first visit shows one example card, the AlphaFold paper. It disappears as soon
 logo off, or overrides the accent colour.
 
 **Customize** holds the few settings: card width, how many authors, title typeface, PNG resolution, and switches
-for journal branding, uniform height, abbreviated journal names, the DOI, citations per year and the
+for journal branding, uniform height, abbreviated journal names and the DOI. Every card carries a small
 "Generated with CiteCard" credit.
 
 ## Shared first and last authors
