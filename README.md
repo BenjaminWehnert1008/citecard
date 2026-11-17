@@ -39,7 +39,7 @@ A first visit shows one example card, the AlphaFold paper. It disappears as soon
 ## Output
 
 - **Copy**, or a click on the card, puts it on the clipboard as a PNG.
-- **PNG** saves it at 2×–4× resolution. The pixel density is written into the file so PowerPoint inserts
+- **PNG** saves it at 4×, 6× or 8× resolution (8× by default: a medium card is 4,320 px wide). The pixel density is written into the file so PowerPoint inserts
   it at the intended size.
 - **SVG** saves it as a vector graphic. Text is stored as outlines, so it needs no installed fonts.
 - **Copy all / Download all** stacks every card into one image.
@@ -47,7 +47,7 @@ A first visit shows one example card, the AlphaFold paper. It disappears as soon
 **Edit** on a card corrects the title, authors, journal, year, citation count and its source, switches the
 logo off, or overrides the accent colour.
 
-**Customize** holds the few settings: card width, how many authors, title typeface, PNG size, and switches
+**Customize** holds the few settings: card width, how many authors, title typeface, PNG resolution, and switches
 for journal branding, uniform height, abbreviated journal names, the DOI, citations per year, the top-%
 badge and the "Generated with CiteCard" credit.
 

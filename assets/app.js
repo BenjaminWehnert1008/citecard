@@ -40,9 +40,10 @@ function rgb2hsl(r, g, b){
   return [h * 60, s, l];
 }
 /* ════════════════════════ options ════════════════════════ */
-const DEFAULTS = { width: 540, face: 'journal', nAuth: 99, scale: 3, accent: '#27303d',
+const DEFAULTS = { width: 540, face: 'journal', nAuth: 99, scale: 8, accent: '#27303d',
                    branding: true, uniform: false, abbrev: false, perYear: false, topBadge: false, showDoi: true, credit: true };
 const opts = { ...DEFAULTS, ...LS.get('citecard.v2.opts', {}) };
+if (![4, 6, 8].includes(opts.scale)) opts.scale = DEFAULTS.scale;      // settings saved before the 4x-8x choice
 
 /* Address of the published tool. In SVG exports it becomes the link behind "CiteCard" in the credit line. */
 const SITE_URL = 'https://benjaminwehnert1008.github.io/citecard/';
@@ -285,7 +286,7 @@ function brandFor(d){
 
 /* Logos come from Wikidata (property P154) and are served by Wikimedia Commons. Nothing is bundled. */
 const LOGO_TTL = 30 * 864e5;
-const logoIndex = LS.get('citecard.v2.logos', {});     // key → { file, url, t } | { none: 1, t }
+const logoIndex = LS.get('citecard.v3.logos', {});     // key → { file, url, t } | { none: 1, t }
 const logoJobs = new Map();                             // key → Promise<{ file, url } | null>
 const logoImages = new Map();                           // url → Promise<processed logo | null>
 
@@ -308,13 +309,13 @@ function lookupLogo(d){
     let meta = { none: 1, t: Date.now() };
     if (file){
       const j = await wiki('https://commons.wikimedia.org/w/api.php?action=query&prop=imageinfo&iiprop=url|mime' +
-                              `&iiurlwidth=960&format=json&origin=*&titles=${encodeURIComponent('File:' + file)}`);
+                              `&iiurlwidth=1920&format=json&origin=*&titles=${encodeURIComponent('File:' + file)}`);
       const ii = Object.values(j?.query?.pages || {})[0]?.imageinfo?.[0];
       const url = ii?.thumburl || ii?.url;
       if (url && /^image\/(png|jpeg|gif|webp|svg\+xml)$/.test(ii.mime || '')) meta = { file, url, t: Date.now() };
     }
     logoIndex[key] = meta;
-    LS.set('citecard.v2.logos', logoIndex);
+    LS.set('citecard.v3.logos', logoIndex);
     return meta.none ? null : meta;
   })().catch(() => null));
   return logoJobs.get(key);
@@ -324,8 +325,8 @@ function loadLogo(url){
   if (!logoImages.has(url)) logoImages.set(url, (async () => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
-    img.src = url;
-    await img.decode();
+    // wait for the load event, not img.decode(): Chrome can hold back decoding a large image off-screen
+    await new Promise((ok, fail) => { img.onload = ok; img.onerror = fail; img.src = url; });
     return processLogo(img);
   })().catch(() => null));
   return logoImages.get(url);
@@ -333,7 +334,7 @@ function loadLogo(url){
 
 /* Trim the margins, drop a white backdrop and read the brand colour. */
 function processLogo(img){
-  const s = Math.min(1, 640 / img.naturalWidth);
+  const s = Math.min(1, 1920 / img.naturalWidth);     // a logo is at most ~250 px wide on the card: enough for 8x
   const w = Math.max(1, Math.round(img.naturalWidth * s)), h = Math.max(1, Math.round(img.naturalHeight * s));
   const full = document.createElement('canvas');
   full.width = w; full.height = h;
@@ -654,14 +655,18 @@ function buildCard(d, o, logo){
 }
 
 /* ════════════════════════ export ════════════════════════ */
-// The logo is painted separately: some browsers rasterise an SVG before its embedded image has decoded.
+// The SVG is given its final pixel size before it is drawn: some browsers (Safari) rasterise an SVG image at
+// its own size and then scale the bitmap, which blurs it. The logo is painted separately, because some
+// browsers rasterise an SVG before its embedded image has decoded.
 async function toCanvas(card, scale){
-  const url = URL.createObjectURL(new Blob([card.base], { type: 'image/svg+xml;charset=utf-8' }));
+  const W = Math.round(card.W * scale), H = Math.round(card.H * scale);
+  const svg = card.base.replace(/^<svg([^>]*?) width="[\d.]+" height="[\d.]+"/, `<svg$1 width="${W}" height="${H}"`);
+  const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
   try {
     const img = new Image();
     await new Promise((ok, fail) => { img.onload = ok; img.onerror = () => fail(new Error('The card could not be rendered')); img.src = url; });
     const c = document.createElement('canvas');
-    c.width = Math.round(card.W * scale); c.height = Math.round(card.H * scale);
+    c.width = W; c.height = H;
     const ctx = c.getContext('2d');
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(img, 0, 0, c.width, c.height);
@@ -691,7 +696,10 @@ async function canvasToPng(canvas, scale){
 const cardPng = card => toCanvas(card, opts.scale).then(c => canvasToPng(c, opts.scale));
 
 async function allPng(){
-  const scale = opts.scale, gap = 10 * scale, cs = [];
+  const cards = items.filter(it => it.card).map(it => it.card);
+  const tall = cards.reduce((a, c) => a + c.H + 10, 0), wide = Math.max(...cards.map(c => c.W));
+  const scale = Math.max(1, Math.min(opts.scale, 16000 / tall, Math.sqrt(120e6 / (tall * wide))));
+  const gap = Math.round(10 * scale), cs = [];
   for (const it of items) if (it.card) cs.push(await toCanvas(it.card, scale));
   const c = document.createElement('canvas');
   c.width = Math.max(...cs.map(x => x.width));
