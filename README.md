@@ -48,8 +48,21 @@ A first visit shows one example card, the AlphaFold paper. It disappears as soon
 logo off, or overrides the accent colour.
 
 **Customize** holds the few settings: card width, how many authors, title typeface, PNG resolution, and switches
-for journal branding, uniform height, abbreviated journal names, the DOI, citations per year, the top-%
-badge and the "Generated with CiteCard" credit.
+for journal branding, uniform height, abbreviated journal names, the DOI, citations per year and the
+"Generated with CiteCard" credit.
+
+## Shared first and last authors
+
+Papers often have several first authors who contributed equally, or several senior authors who jointly
+supervised the work. CiteCard looks this up and keeps all of them on the card, marked `*` (shared first)
+and `†` (shared last), with a note such as *(34 authors; \*18 shared first)*. When the list is too long for
+the card, plain middle authors are dropped first; a very large group is shortened and its size given in
+the note.
+
+Neither OpenAlex nor Crossref records equal contribution. The information comes from the author notes of
+the article in [PubMed Central](https://pmc.ncbi.nlm.nih.gov) (open-access papers and author manuscripts) or
+from the EqualContrib flag in [PubMed](https://pubmed.ncbi.nlm.nih.gov). Papers in neither (most preprints,
+many paywalled papers) get no marks; add them under **Edit** by putting `*` or `†` after a name.
 
 ## Journal branding
 
@@ -68,10 +81,12 @@ Journal logos are trademarks of their publishers and are shown only to identify 
 
 ## Data sources
 
-- [OpenAlex](https://openalex.org): metadata, citation count, retraction status, field-normalised top 1 % / 10 %.
+- [OpenAlex](https://openalex.org): metadata, citation count, retraction status.
 - [Crossref](https://www.crossref.org): author names split into given and family name, journal abbreviation,
   and a fallback when OpenAlex does not know a paper.
 - [Wikidata](https://www.wikidata.org) and [Wikimedia Commons](https://commons.wikimedia.org): journal logos.
+- [PubMed Central](https://pmc.ncbi.nlm.nih.gov) and [PubMed](https://pubmed.ncbi.nlm.nih.gov): shared first and last
+  authors; [Europe PMC](https://europepmc.org) to find a paper's PMC id.
 
 Citation counts differ between databases, which is why each card names its source and the month it was
 retrieved. When a preprint has since been published, the card shows the published version and says so

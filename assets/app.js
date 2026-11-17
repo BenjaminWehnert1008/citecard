@@ -41,7 +41,7 @@ function rgb2hsl(r, g, b){
 }
 /* ════════════════════════ options ════════════════════════ */
 const DEFAULTS = { width: 540, face: 'journal', nAuth: 99, scale: 8, accent: '#27303d',
-                   branding: true, uniform: false, abbrev: false, perYear: false, topBadge: false, showDoi: true, credit: true };
+                   branding: true, uniform: false, abbrev: false, perYear: false, showDoi: true, credit: true };
 const opts = { ...DEFAULTS, ...LS.get('citecard.v2.opts', {}) };
 if (![4, 6, 8].includes(opts.scale)) opts.scale = DEFAULTS.scale;      // settings saved before the 4x-8x choice
 
@@ -92,7 +92,7 @@ const OA = 'https://api.openalex.org/works';
 const CR = 'https://api.crossref.org/works';
 class UserError extends Error {}
 
-async function getJSON(url){
+async function request(url, read){
   let r;
   const fail = (msg, retry) => Object.assign(new UserError(msg), { retry });
   try {
@@ -103,12 +103,15 @@ async function getJSON(url){
   if (r.status === 404) return null;
   if (r.status === 429) throw fail('Too many requests in a short time. Wait a moment and try again.', true);
   if (!r.ok) throw fail(`The data source answered with error ${r.status}.`, r.status >= 500);
-  return r.json();
+  return read(r);
 }
+const getJSON = url => request(url, r => r.json());
+// For documents that may simply not exist (Europe PMC answers 500 for a full text it cannot share): no retry.
+const getText = url => request(url, r => r.text()).catch(e => { if (e.retry && !/Too many|reached/.test(e.message)) return null; throw e; });
 
 // Every API gets its own lane: a few requests at a time, a short gap between them, and a retry when the
 // service says "too many requests". Crossref's anonymous pool accepts only one request at a time.
-function lane(concurrency, gap){
+function lane(concurrency, gap, get = getJSON){
   let active = 0;
   const waiting = [];
   const next = () => { if (active < concurrency && waiting.length){ active++; waiting.shift()(); } };
@@ -116,7 +119,7 @@ function lane(concurrency, gap){
     await new Promise(ok => { waiting.push(ok); next(); });
     try {
       for (let attempt = 0; ; attempt++){
-        try { return await getJSON(url); }
+        try { return await get(url); }
         catch (e) { if (attempt >= 2 || !e.retry) throw e; await sleep(900 * (attempt + 1)); }
       }
     } finally {
@@ -125,6 +128,7 @@ function lane(concurrency, gap){
   };
 }
 const openalex = lane(3, 150), crossref = lane(1, 120), wiki = lane(2, 120);
+const europepmc = lane(2, 120), ncbi = lane(1, 350, getText);      // NCBI allows 3 requests a second
 
 const PARTICLES = new Set(['van', 'von', 'der', 'den', 'de', 'del', 'della', 'di', 'da', 'dos', 'das', 'du', 'la', 'le',
                            'ten', 'ter', 'te', 'bin', 'ibn', 'al', 'el', 'zu', 'zur', 'af', 'av']);
@@ -142,7 +146,8 @@ function splitName(s){
 const initials = given => (given.match(/\p{L}[\p{L}\p{M}'’]*/gu) || [])
   .map(x => x.length <= 3 && x === x.toUpperCase() ? x : x[0].toUpperCase()).join('');   // "AJ" is already initials
 // "Jumper J" – spaces inside one name are non-breaking so a name never wraps apart
-const fmtName = a => (a.lit ?? `${a.family} ${initials(a.given || '')}`).trim().replace(/ /g, ' ');
+const MARK = { first: '*', last: '†' };
+const fmtName = a => (a.lit ?? `${a.family} ${initials(a.given || '')}`).trim().replace(/ /g, ' ') + (MARK[a.mark] || '');
 const tidyTitle = s => s.replace(/([^.])\.$/, '$1');
 const isIssn = s => /^\d{4}-\d{3}[\dX]$/i.test(s || '');
 
@@ -162,10 +167,10 @@ function fromOpenAlex(w){
   const retracted = !!w.is_retracted;
   let title = clean(w.display_name || w.title || '');
   if (retracted) title = title.replace(/^(retracted( article)?|withdrawn)\s*:\s*/i, '');
-  const pct = w.citation_normalized_percentile || {};
   const doi = (w.doi || '').replace(/^https?:\/\/(dx\.)?doi\.org\//i, '');
   return {
     key: (doi || w.id || '').toLowerCase(), doi, oa: (w.id || '').split('/').pop(),
+    pmid: (w.ids?.pmid || '').split('/').pop(), pmcid: (w.ids?.pmcid || '').split('/').pop().replace(/^(\d)/, 'PMC$1'),
     title: tidyTitle(title),
     authors: (w.authorships || []).map(oaAuthor).filter(a => a.family),
     journal, journalShort: '',
@@ -173,7 +178,6 @@ function fromOpenAlex(w){
     publisher: [...new Set([src?.host_organization_name, ...(src?.host_organization_lineage_names || [])].filter(Boolean))].join(' | '),
     year: w.publication_year || '', date: w.publication_date || '',
     cites: typeof w.cited_by_count === 'number' ? w.cited_by_count : null, citeSource: 'OpenAlex',
-    top1: !!pct.is_in_top_1_percent, top10: !!pct.is_in_top_10_percent,
     preprint: w.type === 'preprint', retracted, fetched: Date.now(), note: '',
   };
 }
@@ -192,7 +196,7 @@ function fromCrossref(m){
     issns: (m.ISSN || []).filter(isIssn), publisher: clean(m.publisher || ''),
     year: crYear(m), date: '',
     cites: typeof m['is-referenced-by-count'] === 'number' ? m['is-referenced-by-count'] : null, citeSource: 'Crossref',
-    top1: false, top10: false, preprint: m.type === 'posted-content', retracted: false, fetched: Date.now(), note: '',
+    preprint: m.type === 'posted-content', retracted: false, fetched: Date.now(), note: '',
   };
 }
 
@@ -276,6 +280,87 @@ async function resolve(raw){
   }
   if (oa.status === 'rejected') throw oa.reason;
   throw new UserError('No paper found for this identifier. Is the DOI correct?');
+}
+
+/* ════════════════════════ shared first and last authors ════════════════════════
+   Neither OpenAlex nor Crossref records equal contribution. Two NCBI sources do:
+   - PubMed Central: the article's front matter, with its author notes ("These authors contributed equally",
+     "jointly supervised") and the JATS attribute equal-contrib="yes". It covers author manuscripts too;
+   - PubMed: an EqualContrib flag on each author, filled in by some publishers.
+   Europe PMC is only asked for the PMC id when OpenAlex does not have it.
+   Shared first authors are the run of equal contributors that starts with the first author, shared last
+   authors the run that ends with the last author. A run needs at least two people. */
+const EPMC = 'https://www.ebi.ac.uk/europepmc/webservices/rest', EUTILS = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils';
+const EQUAL = /contributed equally|equal(ly)? contribut|equal (first|senior|last)|joint(ly)? (first|senior|last|supervis|direct|led)|co-?(first|senior|last)[ -]author|shared (first|senior|last)|supervised (this|the) work jointly/i;
+const xml = text => { const d = new DOMParser().parseFromString(text, 'application/xml'); return d.querySelector('parsererror') ? null : d; };
+const kids = (el, name) => [...el.children].filter(c => c.localName === name);
+
+function fromJats(text){
+  const doc = text && xml(text);
+  if (!doc) return null;
+  const front = doc.querySelector('front') || doc;
+  const notes = new Map([...doc.querySelectorAll('fn[id], [id]')].map(el => [el.getAttribute('id'), el.textContent]));
+  const contribs = [...front.querySelectorAll('contrib-group')]
+    .filter(g => !/editor|review/i.test(g.getAttribute('content-type') || ''))
+    .flatMap(g => kids(g, 'contrib'))
+    .filter(c => (c.getAttribute('contrib-type') || 'author') === 'author');
+  const list = contribs.map(c => {
+    const groups = c.getAttribute('equal-contrib') === 'yes' ? ['equal'] : [];
+    for (const x of c.querySelectorAll('xref'))
+      for (const id of (x.getAttribute('rid') || '').split(/\s+/)) if (EQUAL.test(notes.get(id) || '')) groups.push(id);
+    const name = c.querySelector('surname')?.textContent || c.querySelector('collab')?.textContent || '';
+    return { family: name.trim(), groups };
+  });
+  return list.some(a => a.groups.length) ? { source: 'PubMed Central', list } : null;
+}
+
+function fromPubmed(text){
+  const doc = text && xml(text);
+  if (!doc) return null;
+  const list = [...doc.querySelectorAll('Article > AuthorList > Author')].filter(a => a.getAttribute('ValidYN') !== 'N').map(a => ({
+    family: (a.querySelector('LastName') || a.querySelector('CollectiveName'))?.textContent.trim() || '',
+    groups: a.getAttribute('EqualContrib') === 'Y' ? ['equal'] : [],
+  }));
+  return list.some(a => a.groups.length) ? { source: 'PubMed', list } : null;
+}
+
+async function equalContributors(d){
+  let { pmid, pmcid } = d;
+  const query = d.doi && !/^10\.48550\//i.test(d.doi) ? `DOI:"${d.doi}"` : pmid ? `EXT_ID:${pmid} AND SRC:MED` : '';
+  if (!pmcid && query){
+    const j = await europepmc(`${EPMC}/search?format=json&resultType=lite&pageSize=1&query=${encodeURIComponent(query)}`);
+    const r = j?.resultList?.result?.[0];
+    if (r && (!d.doi || (r.doi || '').toLowerCase() === d.doi.toLowerCase())){ pmid = pmid || r.pmid; pmcid = r.pmcid; }
+  }
+  if (pmcid){
+    const found = fromJats(await ncbi(`${EUTILS}/efetch.fcgi?db=pmc&id=${pmcid.replace(/^PMC/i, '')}`));
+    if (found) return found;
+  }
+  if (pmid) return fromPubmed(await ncbi(`${EUTILS}/efetch.fcgi?db=pubmed&retmode=xml&id=${pmid}`));
+  return null;
+}
+
+const plain = s => (s || '').normalize('NFKD').replace(/[^\p{L}]/gu, '').toLowerCase();
+function applyRoles(d, found){
+  const L = found.list, n = L.length, A = d.authors;
+  if (n < 2 || !A.length) return;
+  const run = (from, step, groups) => {
+    const out = [];
+    for (let i = from; i >= 0 && i < n && L[i].groups.some(g => groups.has(g)); i += step) out.push(i);
+    return out;
+  };
+  const first = run(0, 1, new Set(L[0].groups));
+  const last = first.length >= n ? [] : run(n - 1, -1, new Set(L[n - 1].groups)).filter(i => !first.includes(i));
+  // the card's author list can differ from the source (collaborations, missing names): match by family name
+  const place = (i, fromEnd) => {
+    if (A.length === n) return i;
+    const want = plain(L[i].family), order = A.map((_, j) => j);
+    if (fromEnd) order.reverse();
+    return order.find(j => plain(A[j].family || A[j].lit) === want || plain(A[j].lit).endsWith(want)) ?? -1;
+  };
+  for (const a of A) delete a.mark;
+  if (first.length >= 2) for (const i of first){ const j = place(i, false); if (j >= 0) A[j].mark = 'first'; }
+  if (last.length >= 2) for (const i of last){ const j = place(i, true); if (j >= 0) A[j].mark = 'last'; }
 }
 
 /* ════════════════════════ journal branding ════════════════════════ */
@@ -503,15 +588,31 @@ function wrap(s, st, maxW, maxLines){
 
 /* ════════════════════════ the card ════════════════════════ */
 function authorLines(d, o, st, maxW, maxLines){
-  const names = d.authors.map(fmtName), n = names.length;
+  const A = d.authors, n = A.length;
   if (!n) return [];
-  let N = Math.min(o.nAuth, n);
-  for (;;){
-    const s = n <= N + 1 ? names.join(', ')
-                         : `${names.slice(0, N).join(', ')}, … ${names[n - 1]} (${n} authors)`;
-    if (N <= 1 || wrap(s, st, maxW, 99).length <= maxLines) return wrap(s, st, maxW, maxLines);
-    N--;                                        // drop leading names until the line budget holds
-  }
+  const names = A.map(fmtName), nb = t => t.replace(/ /g, ' ');
+  let F = 0; while (F < n && A[F].mark === 'first') F++;
+  let Lc = 0; while (Lc < n - F && A[n - 1 - Lc].mark === 'last') Lc++;
+  if (F < 2) F = 0;
+  if (Lc < 2) Lc = 0;
+  // `lead` names from the front and `tail` from the back; a shared group that does not fit is cut short
+  // and its size goes into the note.
+  const compose = (lead, tail) => {
+    const notes = [], whole = lead + tail >= n;
+    if (!whole) notes.push(`${n} authors`);
+    if (F) notes.push(Math.min(lead, F) < F ? `*${F} shared first` : '*shared first');
+    if (Lc) notes.push(Math.min(tail, Lc) < Lc ? `†${Lc} shared last` : '†shared last');
+    const note = notes.length ? ` (${nb(notes.join('; '))})` : '';
+    return (whole ? names.join(', ') : `${names.slice(0, lead).join(', ')}, … ${names.slice(n - tail).join(', ')}`) + note;
+  };
+  const fits = t => wrap(t, st, maxW, 99).length <= maxLines;
+  const tail = Math.max(1, Lc);
+  const tries = [];
+  for (let lead = Math.max(Math.min(o.nAuth, n), F); lead >= Math.max(F, 1); lead--) tries.push([lead, tail]);   // drop plain names first
+  for (let k = F - 1; k >= 1; k--) tries.push([k, tail]);                                                    // then shorten the shared first
+  for (let t = Lc - 1; t >= 1; t--) tries.push([1, t]);                                                      // then the shared last
+  for (const [lead, t] of tries){ const line = compose(lead, t); if (fits(line)) return wrap(line, st, maxW, maxLines); }
+  return wrap(compose(1, 1), st, maxW, maxLines);
 }
 
 function citesPerYear(d){
@@ -551,8 +652,6 @@ function buildCard(d, o, logo){
   const pills = [];
   if (d.retracted) pills.push({ s: 'RETRACTED', bg: '#b3261e', fg: '#ffffff' });
   if (d.preprint) pills.push({ s: 'PREPRINT', bg: C.pill, fg: C.muted });
-  if (o.topBadge && !d.retracted && (d.top1 || d.top10))
-    pills.push({ s: `TOP ${d.top1 ? 1 : 10}%`, bg: mix(accent, C.bg, 0.9), fg: accentText });
   const pst = S('sans', 700, 8.5 * k, 0.045), ph = 16 * k, ppad = 6.5 * k;
   for (let i = pills.length - 1; i >= 0; i--){
     const p = pills[i], pw = tw(p.s, pst) - pst.tracking * pst.size + 2 * ppad;
@@ -770,6 +869,18 @@ function refresh(item){
   img.alt = `Citation card: ${item.data.title}`;
 }
 
+async function attachRoles(item){
+  const d = item.data;
+  if (!d || d.roles) return;
+  let found;
+  try { found = await equalContributors(d); } catch { return; }      // offline: try again next time
+  if (item.data !== d || d.roles) return;                            // replaced, or edited by hand meanwhile
+  d.roles = found ? found.source : 'none';
+  if (found) applyRoles(d, found);
+  refresh(item);
+  if (!item.example) save();
+}
+
 async function attachLogo(item){
   const d = item.data;
   if (!d || item.logo || !opts.branding) return;
@@ -826,7 +937,7 @@ function mount(item){
     <div class="alts" hidden></div>
     <form class="edit" hidden>
       <label class="w6">Title<input name="ttl"></label>
-      <label class="w6">Authors, comma-separated, as they should appear<input name="auth"></label>
+      <label class="w6">Authors, comma-separated · * shared first · † shared last<input name="auth"></label>
       <label class="w3">Journal<input name="jrn"></label>
       <label class="w1">Year<input name="yr" inputmode="numeric"></label>
       <label class="w1">Citations<input name="cit" inputmode="numeric"></label>
@@ -886,7 +997,13 @@ function mount(item){
     const t = ev.target, v = t.value.trim(), x = item.data;
     switch (t.name){
       case 'ttl': x.title = v; break;
-      case 'auth': x.authors = v.split(/\s*[,;]\s*/).filter(Boolean).map(lit => ({ lit })); break;
+      case 'auth':
+        x.authors = v.split(/\s*[,;]\s*/).filter(Boolean).map(t => {
+          const m = t.match(/^(.*?)\s*([*†#])$/);
+          return m ? { lit: m[1], mark: m[2] === '*' ? 'first' : 'last' } : { lit: t };
+        });
+        x.roles = 'edited';
+        break;
       case 'jrn': x.journal = v; x.journalShort = ''; break;
       case 'yr': x.year = v; break;
       case 'cit': x.cites = v === '' || isNaN(Number(v)) ? null : Math.max(0, Math.round(Number(v))); break;
@@ -898,6 +1015,7 @@ function mount(item){
   };
   refresh(item);
   attachLogo(item);
+  attachRoles(item);
   deal(item);
 }
 
